@@ -40,11 +40,18 @@ import { GHLConfig } from './types/ghl-types';
 dotenv.config();
 
 /**
+ * Session data for each MCP connection
+ */
+interface MCPSession {
+  server: Server;
+  transport: SSEServerTransport;
+}
+
+/**
  * HTTP MCP Server class for web deployment
  */
 class GHLMCPHttpServer {
   private app: express.Application;
-  private server: Server;
   private ghlClient: GHLApiClient;
   private contactTools: ContactTools;
   private conversationTools: ConversationTools;
@@ -64,33 +71,20 @@ class GHLMCPHttpServer {
   private storeTools: StoreTools;
   private productsTools: ProductsTools;
   private port: number;
-  // Store active SSE transports by sessionId
-  private sseTransports: Map<string, SSEServerTransport> = new Map();
+  // Store active MCP sessions (server + transport) by sessionId
+  private mcpSessions: Map<string, MCPSession> = new Map();
 
   constructor() {
     this.port = parseInt(process.env.PORT || process.env.MCP_SERVER_PORT || '8000');
-    
+
     // Initialize Express app
     this.app = express();
     this.setupExpress();
 
-    // Initialize MCP server with capabilities
-    this.server = new Server(
-      {
-        name: 'ghl-mcp-server',
-        version: '1.0.0',
-      },
-      {
-        capabilities: {
-          tools: {},
-        },
-      }
-    );
-
     // Initialize GHL API client
     this.ghlClient = this.initializeGHLClient();
-    
-    // Initialize tools
+
+    // Initialize tools (shared across all sessions)
     this.contactTools = new ContactTools(this.ghlClient);
     this.conversationTools = new ConversationTools(this.ghlClient);
     this.blogTools = new BlogTools(this.ghlClient);
@@ -109,9 +103,30 @@ class GHLMCPHttpServer {
     this.storeTools = new StoreTools(this.ghlClient);
     this.productsTools = new ProductsTools(this.ghlClient);
 
-    // Setup MCP handlers
-    this.setupMCPHandlers();
+    // Setup routes
     this.setupRoutes();
+  }
+
+  /**
+   * Create a new MCP server instance with handlers configured
+   */
+  private createMCPServer(): Server {
+    const server = new Server(
+      {
+        name: 'ghl-mcp-server',
+        version: '1.0.0',
+      },
+      {
+        capabilities: {
+          tools: {},
+        },
+      }
+    );
+
+    // Setup handlers for this server instance
+    this.setupMCPHandlers(server);
+
+    return server;
   }
 
   /**
@@ -166,11 +181,11 @@ class GHLMCPHttpServer {
   }
 
   /**
-   * Setup MCP request handlers
+   * Setup MCP request handlers for a server instance
    */
-  private setupMCPHandlers(): void {
+  private setupMCPHandlers(server: Server): void {
     // Handle list tools requests
-    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+    server.setRequestHandler(ListToolsRequestSchema, async () => {
       console.log('[GHL MCP HTTP] Listing available tools...');
       
       try {
@@ -227,7 +242,7 @@ class GHLMCPHttpServer {
     });
 
     // Handle tool execution requests
-    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
       
       console.log(`[GHL MCP HTTP] Executing tool: ${name}`);
@@ -355,30 +370,44 @@ class GHLMCPHttpServer {
 
     // SSE endpoint for MCP connection (GET establishes SSE stream)
     this.app.get('/sse', async (req: express.Request, res: express.Response) => {
-      const sessionId = req.query.sessionId as string || crypto.randomUUID();
-      console.log(`[GHL MCP HTTP] New SSE connection from: ${req.ip}, sessionId: ${sessionId}`);
+      console.log(`[GHL MCP HTTP] New SSE connection from: ${req.ip}`);
 
       try {
-        // Create SSE transport with the /messages endpoint for this session
-        const transport = new SSEServerTransport(`/messages?sessionId=${sessionId}`, res);
+        // Create a new MCP server instance for this session
+        const mcpServer = this.createMCPServer();
 
-        // Store transport for later message handling
-        this.sseTransports.set(sessionId, transport);
+        // Create SSE transport - it generates its own sessionId internally
+        // We pass the endpoint pattern, and it will append its own sessionId
+        const transport = new SSEServerTransport('/messages', res);
+
+        // Get the actual sessionId from the transport (it generates this internally)
+        const sessionId = transport.sessionId;
+        console.log(`[GHL MCP HTTP] Transport created with sessionId: ${sessionId}`);
+
+        // Store session (server + transport) using the transport's sessionId
+        this.mcpSessions.set(sessionId, { server: mcpServer, transport });
 
         // Connect MCP server to transport
-        await this.server.connect(transport);
+        await mcpServer.connect(transport);
 
         console.log(`[GHL MCP HTTP] SSE connection established for session: ${sessionId}`);
 
         // Handle client disconnect
-        req.on('close', () => {
+        req.on('close', async () => {
           console.log(`[GHL MCP HTTP] SSE connection closed for session: ${sessionId}`);
-          this.sseTransports.delete(sessionId);
+          const session = this.mcpSessions.get(sessionId);
+          if (session) {
+            try {
+              await session.server.close();
+            } catch (e) {
+              // Ignore close errors
+            }
+          }
+          this.mcpSessions.delete(sessionId);
         });
 
       } catch (error) {
-        console.error(`[GHL MCP HTTP] SSE connection error for session ${sessionId}:`, error);
-        this.sseTransports.delete(sessionId);
+        console.error(`[GHL MCP HTTP] SSE connection error:`, error);
 
         if (!res.headersSent) {
           res.status(500).json({ error: 'Failed to establish SSE connection' });
@@ -398,17 +427,19 @@ class GHLMCPHttpServer {
         return;
       }
 
-      const transport = this.sseTransports.get(sessionId);
+      const session = this.mcpSessions.get(sessionId);
 
-      if (!transport) {
-        console.error(`[GHL MCP HTTP] No active transport for session: ${sessionId}`);
+      if (!session) {
+        console.error(`[GHL MCP HTTP] No active session for: ${sessionId}`);
         res.status(404).json({ error: 'Session not found. Please reconnect to /sse endpoint.' });
         return;
       }
 
       try {
         // Handle the incoming message through the transport
-        await transport.handlePostMessage(req, res);
+        // Pass req.body as parsedBody since Express already parsed the JSON body
+        // This prevents the SDK from trying to read the stream again (which causes "stream is not readable")
+        await session.transport.handlePostMessage(req, res, req.body);
       } catch (error) {
         console.error(`[GHL MCP HTTP] Error handling message for session ${sessionId}:`, error);
         if (!res.headersSent) {
