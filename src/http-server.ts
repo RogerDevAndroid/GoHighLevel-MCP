@@ -4,6 +4,7 @@
  */
 
 import crypto from 'crypto';
+import http from 'http';
 import express from 'express';
 import cors from 'cors';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -52,6 +53,7 @@ interface MCPSession {
  */
 class GHLMCPHttpServer {
   private app: express.Application;
+  private httpServer: http.Server | null = null;
   private ghlClient: GHLApiClient;
   private contactTools: ContactTools;
   private conversationTools: ConversationTools;
@@ -754,7 +756,7 @@ class GHLMCPHttpServer {
       await this.testGHLConnection();
       
       // Start HTTP server
-      this.app.listen(this.port, '0.0.0.0', () => {
+      this.httpServer = this.app.listen(this.port, '0.0.0.0', () => {
         console.log('✅ GoHighLevel MCP HTTP Server started successfully!');
         console.log(`🌐 Server running on: http://0.0.0.0:${this.port}`);
         console.log(`🔗 SSE Endpoint: http://0.0.0.0:${this.port}/sse`);
@@ -768,19 +770,43 @@ class GHLMCPHttpServer {
       process.exit(1);
     }
   }
-}
 
-/**
- * Handle graceful shutdown
- */
-function setupGracefulShutdown(): void {
-  const shutdown = (signal: string) => {
-    console.log(`\n[GHL MCP HTTP] Received ${signal}, shutting down gracefully...`);
-    process.exit(0);
-  };
+  /**
+   * Stop the HTTP server and cleanup all sessions
+   */
+  async stop(): Promise<void> {
+    console.log('[GHL MCP HTTP] Closing all MCP sessions...');
 
-  process.on('SIGINT', () => shutdown('SIGINT'));
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
+    // Close all active MCP sessions
+    const closePromises: Promise<void>[] = [];
+    for (const [sessionId, session] of this.mcpSessions) {
+      console.log(`[GHL MCP HTTP] Closing session: ${sessionId}`);
+      closePromises.push(
+        session.server.close().catch((e) => {
+          console.error(`[GHL MCP HTTP] Error closing session ${sessionId}:`, e);
+        })
+      );
+    }
+
+    await Promise.all(closePromises);
+    this.mcpSessions.clear();
+    console.log('[GHL MCP HTTP] All MCP sessions closed');
+
+    // Close the HTTP server
+    if (this.httpServer) {
+      await new Promise<void>((resolve, reject) => {
+        this.httpServer!.close((err) => {
+          if (err) {
+            console.error('[GHL MCP HTTP] Error closing HTTP server:', err);
+            reject(err);
+          } else {
+            console.log('[GHL MCP HTTP] HTTP server closed');
+            resolve();
+          }
+        });
+      });
+    }
+  }
 }
 
 /**
@@ -788,13 +814,35 @@ function setupGracefulShutdown(): void {
  */
 async function main(): Promise<void> {
   try {
-    // Setup graceful shutdown
-    setupGracefulShutdown();
-    
     // Create and start HTTP server
     const server = new GHLMCPHttpServer();
     await server.start();
-    
+
+    // Setup graceful shutdown
+    let isShuttingDown = false;
+
+    const shutdown = async (signal: string) => {
+      if (isShuttingDown) {
+        console.log(`[GHL MCP HTTP] Already shutting down, ignoring ${signal}`);
+        return;
+      }
+      isShuttingDown = true;
+
+      console.log(`\n[GHL MCP HTTP] Received ${signal}, shutting down gracefully...`);
+
+      try {
+        await server.stop();
+        console.log('[GHL MCP HTTP] Graceful shutdown complete');
+        process.exit(0);
+      } catch (error) {
+        console.error('[GHL MCP HTTP] Error during shutdown:', error);
+        process.exit(1);
+      }
+    };
+
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+
   } catch (error) {
     console.error('💥 Fatal error:', error);
     process.exit(1);
