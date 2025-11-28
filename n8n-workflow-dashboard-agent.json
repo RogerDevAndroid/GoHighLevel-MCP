@@ -1,41 +1,174 @@
 {
-  "name": "🏡 Dashboard Selva Dentro - Agente IA",
+  "name": "🏡 Dashboard Selva Dentro - Agente IA + Supabase RAG",
   "nodes": [
+    {
+      "parameters": {
+        "content": "## 📚 ENTRENAMIENTO / INGESTA DE DOCUMENTOS\n\nEste flujo se activa cuando:\n1. Se sube un archivo nuevo a Google Drive\n2. Se elimina el documento anterior de Supabase\n3. Se procesa y vectoriza el nuevo documento\n4. Se almacena en Supabase Vector Store"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [-800, -1000],
+      "typeVersion": 1,
+      "id": "sticky-training",
+      "name": "📝 Training Flow"
+    },
+    {
+      "parameters": {
+        "content": "## 🤖 WORKFLOW PRINCIPAL - AGENTE IA\n\nEste flujo:\n1. Recibe mensajes del Chat Trigger\n2. Usa el AI Agent con GPT-4o\n3. Consulta la herramienta BUSCAR (Supabase)\n4. Consulta GHL MCP para datos en vivo\n5. Responde con información combinada"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [-100, 100],
+      "typeVersion": 1,
+      "id": "sticky-workflow",
+      "name": "📝 Main Workflow"
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_DRIVE_FOLDER_ID",
+          "mode": "id"
+        },
+        "event": "fileCreated",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [-700, -720],
+      "id": "google-drive-trigger",
+      "name": "📂 Google Drive Trigger",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "YOUR_GOOGLE_DRIVE_CREDENTIAL_ID",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "file-id-assignment",
+              "name": "file_id",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "file-name-assignment",
+              "name": "file_name",
+              "value": "={{ $json.name }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-500, -720],
+      "id": "edit-fields",
+      "name": "📋 Edit Fields"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "tableId": "documents",
+        "filterType": "string",
+        "filterString": "=metadata->>file_id=like.*{{ $json.file_id }}*"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [-300, -720],
+      "id": "supabase-delete",
+      "name": "🗑️ Delete Old Docs",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('📋 Edit Fields').item.json.file_id }}",
+          "mode": "id"
+        },
+        "options": {
+          "googleFileConversion": {
+            "conversion": {
+              "docsToFormat": "application/pdf"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [-100, -720],
+      "id": "google-drive-download",
+      "name": "⬇️ Download File",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "YOUR_GOOGLE_DRIVE_CREDENTIAL_ID",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [100, -720],
+      "id": "extract-pdf",
+      "name": "📄 Extract PDF Text"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "tableName": {
+          "__rl": true,
+          "value": "documents",
+          "mode": "list",
+          "cachedResultName": "documents"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1,
+      "position": [300, -720],
+      "id": "supabase-vector-insert",
+      "name": "💾 Supabase Vector Insert",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase account"
+        }
+      }
+    },
     {
       "parameters": {
         "options": {}
       },
-      "id": "chat-trigger",
-      "name": "💬 Chat Trigger",
-      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
       "typeVersion": 1.1,
-      "position": [220, 300],
-      "webhookId": "selva-dentro-dashboard"
-    },
-    {
-      "parameters": {
-        "options": {
-          "systemMessage": "# 🏡 Agente del Dashboard Selva Dentro Tulum\n\nEres un agente especializado que alimenta el dashboard inmobiliario \"Selva Dentro Tulum\".\nTu trabajo es consultar GoHighLevel vía MCP y Supabase para proporcionar datos precisos.\n\n## 🎯 TU OBJETIVO PRINCIPAL\n\nCuando te pregunten por datos del dashboard, SIEMPRE debes obtener información de TODAS las fuentes necesarias para dar una respuesta completa.\n\n---\n\n## 📊 SECCIONES DEL DASHBOARD Y QUÉ DATOS NECESITAN\n\n### 1. HOME / DASHBOARD PRINCIPAL\n\n**KPIs Requeridos:**\n| KPI | Fuente | Herramienta |\n|-----|--------|-------------|\n| Puntos del Mes | Supabase | `supabase_get_leaderboard` (suma total) |\n| Leads Nuevos | GHL | `search_contacts` (filtrar por fecha) |\n| Oportunidades Activas | GHL | `search_opportunities` (status=open) |\n| Ventas Cerradas | GHL | `search_opportunities` (status=won) |\n| Valor Total Pipeline | GHL | `search_opportunities` (suma monetaryValue) |\n| Agentes Activos | GHL | `get_users` (contar activos) |\n\n**Meta Mensual:** 270 puntos, 6 ventas\n\n**Leaderboard:** Top 5 brokers por puntos → `supabase_get_leaderboard`\n\n**Feed de Actividad:** Últimas 10 actividades → `supabase_get_activities`\n\n---\n\n### 2. LEADS (Kanban de 6 columnas)\n\n**Columnas del Pipeline:**\n1. **Nuevo** - Leads recién ingresados\n2. **Calificado** - Leads con presupuesto validado\n3. **Propuesta** - Enviada propuesta de propiedad\n4. **Visita** - Cita agendada o realizada\n5. **Negociación** - En proceso de cierre\n6. **Cerrado** - Venta completada\n\n**Datos por Lead:**\n- Nombre completo (firstName + lastName)\n- Email, Teléfono\n- Fuente (source): Facebook Ads, Google Ads, Referido, Instagram, Website\n- Etapa actual (mapear de tags o opportunity stage)\n- Presupuesto (customField o monetaryValue)\n- Propiedad de interés (customField)\n- Fecha de último contacto\n- Broker asignado\n\n**Herramientas:**\n- `search_contacts` - Lista de leads\n- `search_opportunities` - Estado en pipeline\n- `get_pipelines` - Mapeo de etapas\n\n---\n\n### 3. BROKERS (Grid de agentes)\n\n**Datos por Broker:**\n- Nombre, Email, Avatar\n- Puntos del mes (de Supabase)\n- Leads asignados (count)\n- Oportunidades activas (count)\n- Ventas cerradas (count)\n- Valor total vendido (sum)\n- Tasa de conversión (%)\n- Última actividad\n\n**Herramientas:**\n- `get_users` - Lista de brokers\n- `search_opportunities` - Agrupado por assignedTo\n- `supabase_get_leaderboard` - Puntos\n\n---\n\n### 4. REPORTES\n\n**Métricas Generales:**\n- Total Leads (mes actual vs anterior)\n- Total Oportunidades\n- Total Ventas\n- Valor Total Vendido\n- Ticket Promedio\n- Tasa de Conversión Global\n\n**Por Canal (source):**\n- Facebook Ads: leads, conversiones, valor\n- Google Ads: leads, conversiones, valor\n- Instagram: leads, conversiones, valor\n- Referidos: leads, conversiones, valor\n- Website: leads, conversiones, valor\n\n**Por Broker:**\n- Ranking por ventas\n- Ranking por valor\n- Ranking por conversión\n\n---\n\n### 5. CALENDARIO / CITAS\n\n**Datos Requeridos:**\n- Citas de hoy\n- Citas de esta semana\n- Citas por broker\n- Estado: Pendiente, Confirmada, Completada, Cancelada\n\n**Herramienta:** `get_calendar_events`\n\n---\n\n## 📋 SISTEMA DE PUNTOS\n\n| Actividad | Puntos | Código |\n|-----------|--------|--------|\n| SMS enviado | 1 | `sms_enviado` |\n| Email enviado | 2 | `email_enviado` |\n| Llamada realizada | 3 | `llamada_realizada` |\n| Cita agendada | 3 | `cita_agendada` |\n| Cita confirmada | 5 | `cita_confirmada` |\n| Visita física | 10 | `fisica_cliente_final` |\n| Venta cerrada | 20 | `oportunidad_ganada` |\n\n---\n\n## 🎯 INSTRUCCIONES DE RESPUESTA\n\n### Para consultas de DATOS:\n\n1. **Identifica qué sección** del dashboard necesita el usuario\n2. **Usa TODAS las herramientas necesarias** - no escatimes\n3. **Combina datos** de GHL y Supabase cuando sea necesario\n4. **Formatea la respuesta** de forma clara con tablas y listas\n5. **Incluye métricas relevantes** y comparativas\n6. **Sugiere acciones** basadas en los datos\n\n### Para ACCIONES:\n\n1. **Confirma los parámetros** antes de ejecutar\n2. **Ejecuta la acción** con la herramienta correcta\n3. **Reporta el resultado** claramente\n4. **Sugiere siguientes pasos** si aplica\n\n---\n\n## 🇲🇽 CONTEXTO DEL NEGOCIO\n\n- **Proyecto:** Selva Dentro - Desarrollo inmobiliario premium en Tulum, Riviera Maya\n- **Moneda:** MXN (pesos mexicanos)\n- **Equipo:** 5-6 brokers activos\n- **Meta mensual:** 270 puntos, 6 ventas\n- **Ticket promedio:** ~$400,000 MXN\n- **Fuentes principales:** Facebook Ads, Google Ads, Instagram, Referidos\n\n---\n\n## ⚠️ REGLAS IMPORTANTES\n\n1. **SIEMPRE responde en español**\n2. **USA tablas** para datos tabulares\n3. **INCLUYE emojis** para mejor legibilidad\n4. **SÉ CONCISO** pero informativo\n5. **SUGIERE ACCIONES** cuando veas oportunidades\n6. **NO INVENTES DATOS** - si no tienes info, dilo\n7. **COMBINA FUENTES** cuando sea necesario\n\n---\n\n## 📚 CONSULTA LA BASE DE CONOCIMIENTOS\n\nPara conocer todas las herramientas disponibles (269 tools), consulta la base de conocimientos adjunta que contiene el catálogo completo de GoHighLevel MCP."
-        }
-      },
-      "id": "ai-agent",
-      "name": "🤖 Dashboard Agent",
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 1.7,
-      "position": [480, 300]
-    },
-    {
-      "parameters": {
-        "model": "gpt-4o",
-        "options": {
-          "temperature": 0.3
-        }
-      },
-      "id": "openai-model",
-      "name": "🧠 OpenAI GPT-4o",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1,
-      "position": [360, 520],
+      "position": [300, -520],
+      "id": "embeddings-insert",
+      "name": "📐 Embeddings (Insert)",
       "credentials": {
         "openAiApi": {
           "id": "YOUR_OPENAI_CREDENTIAL_ID",
@@ -45,13 +178,92 @@
     },
     {
       "parameters": {
-        "sseEndpoint": "https://selva-ghl-mcp-v2.cpvnsn.easypanel.host/sse"
+        "jsonMode": "expressionData",
+        "jsonData": "={{ $json.text }}",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "file_id",
+                "value": "={{ $('📋 Edit Fields').item.json.file_id }}"
+              },
+              {
+                "name": "file_name",
+                "value": "={{ $('📋 Edit Fields').item.json.file_name }}"
+              },
+              {
+                "name": "source",
+                "value": "google_drive"
+              },
+              {
+                "name": "ingested_at",
+                "value": "={{ new Date().toISOString() }}"
+              }
+            ]
+          }
+        }
       },
-      "id": "mcp-ghl",
-      "name": "🔌 GHL MCP Server",
-      "type": "@n8n/n8n-nodes-langchain.toolMcp",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
       "typeVersion": 1,
-      "position": [520, 520]
+      "position": [500, -520],
+      "id": "data-loader",
+      "name": "📝 Data Loader"
+    },
+    {
+      "parameters": {
+        "chunkSize": 1000,
+        "chunkOverlap": 200,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [500, -360],
+      "id": "text-splitter",
+      "name": "✂️ Text Splitter"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "id": "chat-trigger",
+      "name": "💬 Chat Trigger",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [100, 300],
+      "webhookId": "selva-dentro-dashboard"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Eres un agente especializado del Dashboard inmobiliario \"Selva Dentro Tulum\".\n\nTu trabajo es:\n1. Consultar la base de conocimientos BUSCAR para información sobre procedimientos, herramientas GHL, y documentación interna\n2. Consultar GoHighLevel vía MCP para datos en vivo (contactos, oportunidades, calendario, etc.)\n\n## 🎯 TU OBJETIVO PRINCIPAL\n\nCuando te pregunten por datos del dashboard, SIEMPRE debes obtener información de TODAS las fuentes necesarias para dar una respuesta completa.\n\n---\n\n## 📊 SECCIONES DEL DASHBOARD Y QUÉ DATOS NECESITAN\n\n### 1. HOME / DASHBOARD PRINCIPAL\n\n**KPIs Requeridos:**\n| KPI | Fuente | Herramienta |\n|-----|--------|-------------|\n| Puntos del Mes | Supabase | `supabase_get_leaderboard` (suma total) |\n| Leads Nuevos | GHL | `search_contacts` (filtrar por fecha) |\n| Oportunidades Activas | GHL | `search_opportunities` (status=open) |\n| Ventas Cerradas | GHL | `search_opportunities` (status=won) |\n| Valor Total Pipeline | GHL | `search_opportunities` (suma monetaryValue) |\n| Agentes Activos | GHL | `get_users` (contar activos) |\n\n**Meta Mensual:** 270 puntos, 6 ventas\n\n### 2. LEADS (Kanban de 6 columnas)\n\n**Columnas del Pipeline:**\n1. **Nuevo** - Leads recién ingresados\n2. **Calificado** - Leads con presupuesto validado\n3. **Propuesta** - Enviada propuesta de propiedad\n4. **Visita** - Cita agendada o realizada\n5. **Negociación** - En proceso de cierre\n6. **Cerrado** - Venta completada\n\n### 3. BROKERS (Grid de agentes)\n\n**Datos por Broker:** Nombre, Email, Puntos del mes, Leads asignados, Oportunidades activas, Ventas cerradas, Valor total vendido, Tasa de conversión\n\n### 4. REPORTES\n\n**Por Canal (source):** Facebook Ads, Google Ads, Instagram, Referidos, Website\n\n---\n\n## 📋 SISTEMA DE PUNTOS\n\n| Actividad | Puntos | Código |\n|-----------|--------|--------|\n| SMS enviado | 1 | `sms_enviado` |\n| Email enviado | 2 | `email_enviado` |\n| Llamada realizada | 3 | `llamada_realizada` |\n| Cita agendada | 3 | `cita_agendada` |\n| Cita confirmada | 5 | `cita_confirmada` |\n| Visita física | 10 | `fisica_cliente_final` |\n| Venta cerrada | 20 | `oportunidad_ganada` |\n\n---\n\n## 🎯 INSTRUCCIONES DE RESPUESTA\n\n### Para consultas de INFORMACIÓN/DOCUMENTACIÓN:\n\n1. **Usa la herramienta BUSCAR** para consultar la base de conocimientos\n2. Si la información no está en la base, responde: \"Lo siento, la base de datos BUSCAR no contiene información relacionada con ese tema.\"\n\n### Para consultas de DATOS EN VIVO:\n\n1. **Usa las herramientas de GHL MCP** para obtener datos actuales\n2. **Combina datos** cuando sea necesario\n3. **Formatea la respuesta** de forma clara con tablas y listas\n\n---\n\n## 🇲🇽 CONTEXTO DEL NEGOCIO\n\n- **Proyecto:** Selva Dentro - Desarrollo inmobiliario premium en Tulum, Riviera Maya\n- **Moneda:** MXN (pesos mexicanos)\n- **Equipo:** 5-6 brokers activos\n- **Meta mensual:** 270 puntos, 6 ventas\n- **Ticket promedio:** ~$400,000 MXN\n\n---\n\n## ⚠️ REGLAS IMPORTANTES\n\n1. **SIEMPRE responde en español**\n2. **USA tablas** para datos tabulares\n3. **SÉ CONCISO** pero informativo\n4. **NO INVENTES DATOS** - si no tienes info, dilo\n5. **COMBINA FUENTES** cuando sea necesario (BUSCAR + GHL MCP)\n\n---\n\n**Entrada del usuario:**\n{{ $json.chatInput }}\n",
+        "options": {}
+      },
+      "id": "ai-agent",
+      "name": "🤖 Dashboard Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [400, 300],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "openai-model-agent",
+      "name": "🧠 OpenAI GPT-4o",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [300, 520],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI API"
+        }
+      }
     },
     {
       "parameters": {
@@ -62,39 +274,40 @@
       "name": "🧠 Window Buffer Memory",
       "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
       "typeVersion": 1.3,
-      "position": [840, 520]
+      "position": [420, 520]
     },
     {
       "parameters": {
-        "content": "# 📚 BASE DE CONOCIMIENTOS - GoHighLevel MCP (269 Tools)\n\n---\n\n## 🎯 CONTACT MANAGEMENT (31 Tools)\n\n### Core Operations:\n- `create_contact` - Crear nuevo contacto\n- `search_contacts` - Buscar contactos con filtros\n- `get_contact` - Obtener contacto por ID\n- `update_contact` - Actualizar datos del contacto\n- `delete_contact` - Eliminar contacto\n- `add_contact_tags` - Agregar tags al contacto\n- `remove_contact_tags` - Quitar tags del contacto\n\n### Task & Note Management:\n- `get_contact_tasks` - Obtener tareas del contacto\n- `create_contact_task` - Crear tarea para contacto\n- `update_contact_task` - Actualizar tarea\n- `delete_contact_task` - Eliminar tarea\n- `get_contact_notes` - Obtener notas del contacto\n- `create_contact_note` - Crear nota\n- `update_contact_note` - Actualizar nota\n- `delete_contact_note` - Eliminar nota\n\n### Advanced Features:\n- `upsert_contact` - Crear o actualizar inteligente\n- `get_duplicate_contact` - Detectar duplicados\n- `bulk_update_contact_tags` - Actualización masiva de tags\n- `add_contact_to_workflow` - Agregar a workflow\n- `remove_contact_from_workflow` - Quitar de workflow\n- `add_contact_followers` - Agregar seguidores\n- `remove_contact_followers` - Quitar seguidores\n\n---\n\n## 💬 MESSAGING & CONVERSATIONS (20 Tools)\n\n### Direct Communication:\n- `send_sms` - Enviar SMS\n- `send_email` - Enviar email con formato\n- `search_conversations` - Buscar conversaciones\n- `get_conversation` - Obtener conversación\n- `create_conversation` - Crear conversación\n\n### Message Management:\n- `get_message` - Obtener mensaje\n- `get_email_message` - Obtener email\n- `upload_message_attachments` - Subir adjuntos\n- `update_message_status` - Actualizar estado\n- `cancel_scheduled_message` - Cancelar programado\n\n### Call Features:\n- `get_message_recording` - Obtener grabación\n- `get_message_transcription` - Obtener transcripción\n- `download_transcription` - Descargar transcripción\n- `add_inbound_message` - Registrar mensaje entrante\n- `add_outbound_call` - Registrar llamada saliente\n\n### Live Chat:\n- `live_chat_typing` - Indicador de escritura\n\n---\n\n## 📝 BLOG MANAGEMENT (7 Tools)\n\n- `create_blog_post` - Crear post con SEO\n- `update_blog_post` - Actualizar post\n- `get_blog_posts` - Listar posts\n- `get_blog_sites` - Obtener sitios\n- `get_blog_authors` - Listar autores\n- `get_blog_categories` - Listar categorías\n- `check_url_slug` - Validar URL slug\n\n---\n\n## 💰 OPPORTUNITY MANAGEMENT (10 Tools)\n\n- `search_opportunities` - Buscar con filtros (pipeline, stage, contact)\n- `get_pipelines` - Obtener pipelines y etapas\n- `create_opportunity` - Crear oportunidad\n- `update_opportunity` - Actualizar oportunidad\n- `delete_opportunity` - Eliminar oportunidad\n- `update_opportunity_status` - Cambiar estado (won/lost)\n- `upsert_opportunity` - Crear o actualizar\n- `add_opportunity_followers` - Agregar seguidores\n- `remove_opportunity_followers` - Quitar seguidores\n\n---\n\n## 🗓️ CALENDAR & APPOINTMENTS (14 Tools)\n\n### Calendar Management:\n- `get_calendar_groups` - Grupos de calendarios\n- `get_calendars` - Listar calendarios\n- `create_calendar` - Crear calendario\n- `update_calendar` - Actualizar calendario\n- `delete_calendar` - Eliminar calendario\n\n### Appointment Booking:\n- `get_calendar_events` - Obtener eventos/citas\n- `get_free_slots` - Disponibilidad\n- `create_appointment` - Crear cita\n- `get_appointment` - Obtener cita\n- `update_appointment` - Actualizar cita\n- `delete_appointment` - Eliminar cita\n\n### Schedule Control:\n- `create_block_slot` - Bloquear tiempo\n- `update_block_slot` - Actualizar bloqueo\n\n---\n\n## 📧 EMAIL MARKETING (5 Tools)\n\n- `get_email_campaigns` - Listar campañas\n- `create_email_template` - Crear template\n- `get_email_templates` - Listar templates\n- `update_email_template` - Actualizar template\n- `delete_email_template` - Eliminar template\n\n---\n\n## 🏢 LOCATION MANAGEMENT (24 Tools)\n\n### Sub-Account Management:\n- `search_locations` - Buscar ubicaciones\n- `get_location` - Obtener ubicación\n- `create_location` - Crear ubicación\n- `update_location` - Actualizar ubicación\n- `delete_location` - Eliminar ubicación\n\n### Tag System:\n- `get_location_tags` - Listar tags\n- `create_location_tag` - Crear tag\n- `update_location_tag` - Actualizar tag\n- `delete_location_tag` - Eliminar tag\n\n### Custom Fields & Values:\n- `get_location_custom_fields` - Obtener campos\n- `create_location_custom_field` - Crear campo\n- `update_location_custom_field` - Actualizar campo\n- `get_location_custom_values` - Obtener valores\n- `create_location_custom_value` - Crear valor\n- `update_location_custom_value` - Actualizar valor\n\n### Templates & Settings:\n- `get_location_templates` - Listar templates\n- `delete_location_template` - Eliminar template\n- `get_timezones` - Listar zonas horarias\n\n---\n\n## ✅ EMAIL VERIFICATION (1 Tool)\n\n- `verify_email` - Verificar email (deliverability, riesgo)\n\n---\n\n## 📱 SOCIAL MEDIA MANAGEMENT (17 Tools)\n\n### Post Management:\n- `search_social_posts` - Buscar posts\n- `create_social_post` - Crear post\n- `get_social_post` - Obtener post\n- `update_social_post` - Actualizar post\n- `delete_social_post` - Eliminar post\n- `bulk_delete_social_posts` - Eliminar en lote\n\n### Account Integration:\n- `get_social_accounts` - Listar cuentas\n- `delete_social_account` - Eliminar cuenta\n- `start_social_oauth` - Iniciar OAuth\n\n### Bulk Operations:\n- `upload_social_csv` - Subir CSV\n- `get_csv_upload_status` - Estado de carga\n- `set_csv_accounts` - Configurar cuentas CSV\n\n### Organization:\n- `get_social_categories` - Categorías\n- `get_social_tags` - Tags\n- `get_social_tags_by_ids` - Tags por IDs\n\n**Plataformas:** Google Business, Facebook, Instagram, LinkedIn, Twitter, TikTok\n\n---\n\n## 📁 MEDIA LIBRARY (3 Tools)\n\n- `get_media_files` - Buscar y filtrar media\n- `upload_media_file` - Subir archivos\n- `delete_media_file` - Eliminar archivos\n\n---\n\n## 🏗️ CUSTOM OBJECTS (9 Tools)\n\n### Schema Management:\n- `get_all_objects` - Listar todos los objetos\n- `create_object_schema` - Crear esquema\n- `get_object_schema` - Obtener esquema\n- `update_object_schema` - Actualizar esquema\n\n### Record Operations:\n- `create_object_record` - Crear registro\n- `get_object_record` - Obtener registro\n- `update_object_record` - Actualizar registro\n- `delete_object_record` - Eliminar registro\n\n### Advanced Search:\n- `search_object_records` - Buscar registros\n\n**Casos de uso:** Registros de mascotas, tickets de soporte, inventario, datos personalizados\n\n---\n\n## 🔗 ASSOCIATION MANAGEMENT (10 Tools)\n\n- `get_all_associations` - Listar asociaciones\n- `create_association` - Crear asociación\n- `get_association_by_id` - Obtener por ID\n- `update_association` - Actualizar\n- `delete_association` - Eliminar\n- `create_relation` - Crear relación\n- `get_relations_by_record` - Relaciones por registro\n- `delete_relation` - Eliminar relación\n\n---\n\n## 🎛️ CUSTOM FIELDS V2 (8 Tools)\n\n- `get_custom_field_by_id` - Obtener campo\n- `create_custom_field` - Crear campo\n- `update_custom_field` - Actualizar campo\n- `delete_custom_field` - Eliminar campo\n- `get_custom_fields_by_object_key` - Campos por objeto\n- `create_custom_field_folder` - Crear carpeta\n- `update_custom_field_folder` - Actualizar carpeta\n- `delete_custom_field_folder` - Eliminar carpeta\n\n---\n\n## ⚡ WORKFLOW MANAGEMENT (1 Tool)\n\n- `get_workflows` - Listar workflows de automatización\n\n---\n\n## 📊 SURVEY MANAGEMENT (2 Tools)\n\n- `get_surveys` - Listar encuestas\n- `get_survey_submissions` - Obtener respuestas\n\n---\n\n## 🛒 STORE MANAGEMENT (18 Tools)\n\n### Shipping Zones:\n- `create_shipping_zone` - Crear zona\n- `list_shipping_zones` - Listar zonas\n- `get_shipping_zone` - Obtener zona\n- `update_shipping_zone` - Actualizar zona\n- `delete_shipping_zone` - Eliminar zona\n\n### Shipping Rates:\n- `get_available_shipping_rates` - Tarifas disponibles\n- `create_shipping_rate` - Crear tarifa\n- `list_shipping_rates` - Listar tarifas\n- `get_shipping_rate` - Obtener tarifa\n- `update_shipping_rate` - Actualizar tarifa\n- `delete_shipping_rate` - Eliminar tarifa\n\n### Carriers & Settings:\n- `create_shipping_carrier` - Crear carrier\n- `list_shipping_carriers` - Listar carriers\n- `update_shipping_carrier` - Actualizar carrier\n- `create_store_setting` - Crear configuración\n- `get_store_setting` - Obtener configuración\n\n---\n\n## 📦 PRODUCTS MANAGEMENT (10 Tools)\n\n### Product Operations:\n- `create_product` - Crear producto\n- `list_products` - Listar productos\n- `get_product` - Obtener producto\n- `update_product` - Actualizar producto\n- `delete_product` - Eliminar producto\n\n### Pricing & Inventory:\n- `create_price` - Crear precio\n- `list_prices` - Listar precios\n- `list_inventory` - Listar inventario\n\n### Collections:\n- `create_product_collection` - Crear colección\n- `list_product_collections` - Listar colecciones\n\n---\n\n## 💳 PAYMENTS MANAGEMENT (20 Tools)\n\n### Integration Providers:\n- `create_whitelabel_integration_provider` - Crear proveedor\n- `list_whitelabel_integration_providers` - Listar proveedores\n\n### Order Management:\n- `list_orders` - Listar órdenes\n- `get_order_by_id` - Obtener orden\n- `create_order_fulfillment` - Crear fulfillment\n- `list_order_fulfillments` - Listar fulfillments\n\n### Transaction Tracking:\n- `list_transactions` - Listar transacciones\n- `get_transaction_by_id` - Obtener transacción\n\n### Subscription Management:\n- `list_subscriptions` - Listar suscripciones\n- `get_subscription_by_id` - Obtener suscripción\n\n### Coupon System:\n- `list_coupons` - Listar cupones\n- `create_coupon` - Crear cupón\n- `update_coupon` - Actualizar cupón\n- `delete_coupon` - Eliminar cupón\n- `get_coupon` - Obtener cupón\n\n### Custom Payment Gateways:\n- `create_custom_provider_integration` - Crear integración\n- `delete_custom_provider_integration` - Eliminar integración\n- `get_custom_provider_config` - Obtener config\n- `create_custom_provider_config` - Crear config\n\n---\n\n## 🧾 INVOICES & BILLING (39 Tools)\n\n### Invoice Templates:\n- `create_invoice_template` - Crear template\n- `list_invoice_templates` - Listar templates\n- `get_invoice_template` - Obtener template\n- `update_invoice_template` - Actualizar template\n- `delete_invoice_template` - Eliminar template\n- `update_invoice_template_late_fees` - Config late fees\n- `update_invoice_template_payment_methods` - Config métodos pago\n\n### Recurring Invoices:\n- `create_invoice_schedule` - Crear recurrente\n- `list_invoice_schedules` - Listar recurrentes\n- `get_invoice_schedule` - Obtener recurrente\n- `update_invoice_schedule` - Actualizar recurrente\n- `delete_invoice_schedule` - Eliminar recurrente\n- `schedule_invoice_schedule` - Programar\n- `auto_payment_invoice_schedule` - Auto-pago\n- `cancel_invoice_schedule` - Cancelar\n\n### Invoice Management:\n- `create_invoice` - Crear factura\n- `list_invoices` - Listar facturas\n- `get_invoice` - Obtener factura\n- `update_invoice` - Actualizar factura\n- `delete_invoice` - Eliminar factura\n- `void_invoice` - Anular factura\n- `send_invoice` - Enviar factura\n- `record_invoice_payment` - Registrar pago\n- `generate_invoice_number` - Generar número\n- `text2pay_invoice` - Text2Pay\n\n### Estimates:\n- `create_estimate` - Crear cotización\n- `list_estimates` - Listar cotizaciones\n- `update_estimate` - Actualizar cotización\n- `delete_estimate` - Eliminar cotización\n- `send_estimate` - Enviar cotización\n- `create_invoice_from_estimate` - Convertir a factura\n- `generate_estimate_number` - Generar número\n\n### Estimate Templates:\n- `list_estimate_templates` - Listar templates\n- `create_estimate_template` - Crear template\n- `update_estimate_template` - Actualizar template\n- `delete_estimate_template` - Eliminar template\n- `preview_estimate_template` - Preview\n\n---\n\n## 🎮 EJEMPLOS DE USO\n\n### 📞 Workflow de Comunicación:\n\"Buscar contactos con tag 'VIP' que no han sido contactados en 30 días, enviarles SMS personalizado sobre nueva oferta premium\"\n\n### 💰 Gestión de Pipeline:\n\"Crear oportunidad para Juan Pérez por $5,000 USD en pipeline 'Ventas Enterprise', agendar cita de seguimiento para el martes\"\n\n### 📊 Business Intelligence:\n\"Obtener facturas del último trimestre, analizar patrones de pago, crear reporte de mejores clientes\"\n\n### 🛒 Operaciones E-commerce:\n\"Listar productos con bajo inventario, crear campaña de restock, enviar a contactos con tag 'inventory-manager'\"\n\n### 📱 Automatización Social:\n\"Crear post de redes sociales anunciando Black Friday, programar en todas las plataformas conectadas\"\n\n### 🎯 Marketing Automation:\n\"Encontrar contactos que abrieron último email pero no compraron, agregarlos a workflow 'warm-leads', programar secuencia de seguimiento\"",
-        "name": "knowledge",
-        "description": "Base de conocimientos con el catálogo completo de 269 herramientas de GoHighLevel MCP"
+        "sseEndpoint": "https://selva-ghl-mcp-v2.cpvnsn.easypanel.host/sse"
       },
-      "id": "knowledge-base",
-      "name": "📚 Knowledge Base - GHL Tools",
-      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "id": "mcp-ghl",
+      "name": "🔌 GHL MCP Server",
+      "type": "@n8n/n8n-nodes-langchain.toolMcp",
       "typeVersion": 1,
-      "position": [680, 520]
+      "position": [540, 520]
     },
     {
       "parameters": {
+        "name": "BUSCAR",
+        "description": "Usa esta herramienta para buscar información en la base de conocimientos de Selva Dentro. Contiene documentación sobre procedimientos, herramientas GHL, políticas, y guías internas.",
+        "topK": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolVectorStore",
+      "typeVersion": 1,
+      "position": [660, 520],
+      "id": "tool-buscar",
+      "name": "🔍 BUSCAR"
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o",
         "options": {}
       },
-      "id": "vector-store-retriever",
-      "name": "🔍 Vector Store Retriever",
-      "type": "@n8n/n8n-nodes-langchain.retrieverVectorStore",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1,
-      "position": [680, 680]
-    },
-    {
-      "parameters": {
-        "options": {}
-      },
-      "id": "embeddings",
-      "name": "📐 OpenAI Embeddings",
-      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
-      "typeVersion": 1,
-      "position": [840, 680],
+      "position": [660, 720],
+      "id": "openai-model-buscar",
+      "name": "🧠 OpenAI (BUSCAR)",
       "credentials": {
         "openAiApi": {
           "id": "YOUR_OPENAI_CREDENTIAL_ID",
@@ -104,17 +317,132 @@
     },
     {
       "parameters": {
-        "mode": "insert",
-        "memoryKey": "ghl_tools_knowledge"
+        "tableName": {
+          "__rl": true,
+          "value": "documents",
+          "mode": "list",
+          "cachedResultName": "documents"
+        },
+        "options": {}
       },
-      "id": "in-memory-vector-store",
-      "name": "💾 In-Memory Vector Store",
-      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
       "typeVersion": 1,
-      "position": [680, 840]
+      "position": [780, 720],
+      "id": "supabase-vector-query",
+      "name": "💾 Supabase Vector Store",
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_SUPABASE_CREDENTIAL_ID",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.1,
+      "position": [900, 720],
+      "id": "embeddings-query",
+      "name": "📐 Embeddings (Query)",
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI API"
+        }
+      }
     }
   ],
   "connections": {
+    "📂 Google Drive Trigger": {
+      "main": [
+        [
+          {
+            "node": "📋 Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "🗑️ Delete Old Docs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🗑️ Delete Old Docs": {
+      "main": [
+        [
+          {
+            "node": "⬇️ Download File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⬇️ Download File": {
+      "main": [
+        [
+          {
+            "node": "📄 Extract PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📄 Extract PDF Text": {
+      "main": [
+        [
+          {
+            "node": "💾 Supabase Vector Insert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📐 Embeddings (Insert)": {
+      "ai_embedding": [
+        [
+          {
+            "node": "💾 Supabase Vector Insert",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📝 Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "💾 Supabase Vector Insert",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✂️ Text Splitter": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "📝 Data Loader",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "💬 Chat Trigger": {
       "main": [
         [
@@ -137,17 +465,6 @@
         ]
       ]
     },
-    "🔌 GHL MCP Server": {
-      "ai_tool": [
-        [
-          {
-            "node": "🤖 Dashboard Agent",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "🧠 Window Buffer Memory": {
       "ai_memory": [
         [
@@ -159,50 +476,56 @@
         ]
       ]
     },
-    "📚 Knowledge Base - GHL Tools": {
-      "ai_document": [
+    "🔌 GHL MCP Server": {
+      "ai_tool": [
         [
           {
-            "node": "💾 In-Memory Vector Store",
-            "type": "ai_document",
+            "node": "🤖 Dashboard Agent",
+            "type": "ai_tool",
             "index": 0
           }
         ]
       ]
     },
-    "📐 OpenAI Embeddings": {
-      "ai_embedding": [
+    "🔍 BUSCAR": {
+      "ai_tool": [
         [
           {
-            "node": "💾 In-Memory Vector Store",
-            "type": "ai_embedding",
-            "index": 0
-          },
-          {
-            "node": "🔍 Vector Store Retriever",
-            "type": "ai_embedding",
+            "node": "🤖 Dashboard Agent",
+            "type": "ai_tool",
             "index": 0
           }
         ]
       ]
     },
-    "💾 In-Memory Vector Store": {
+    "🧠 OpenAI (BUSCAR)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "🔍 BUSCAR",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "💾 Supabase Vector Store": {
       "ai_vectorStore": [
         [
           {
-            "node": "🔍 Vector Store Retriever",
+            "node": "🔍 BUSCAR",
             "type": "ai_vectorStore",
             "index": 0
           }
         ]
       ]
     },
-    "🔍 Vector Store Retriever": {
-      "ai_retriever": [
+    "📐 Embeddings (Query)": {
+      "ai_embedding": [
         [
           {
-            "node": "🤖 Dashboard Agent",
-            "type": "ai_retriever",
+            "node": "💾 Supabase Vector Store",
+            "type": "ai_embedding",
             "index": 0
           }
         ]
@@ -234,9 +557,18 @@
       "name": "GoHighLevel",
       "createdAt": "2024-11-28T00:00:00.000Z",
       "updatedAt": "2024-11-28T00:00:00.000Z"
+    },
+    {
+      "name": "Supabase RAG",
+      "createdAt": "2024-11-28T00:00:00.000Z",
+      "updatedAt": "2024-11-28T00:00:00.000Z"
     }
   ],
-  "triggerCount": 1,
+  "triggerCount": 2,
   "updatedAt": "2024-11-28T00:00:00.000Z",
-  "versionId": "2"
+  "versionId": "3",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": ""
+  }
 }
