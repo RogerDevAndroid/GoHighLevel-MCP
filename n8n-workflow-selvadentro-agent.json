@@ -1,0 +1,281 @@
+{
+  "name": "🏡 Selvadentro Dashboard Agent - GHL MCP + Supabase RAG",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [400, 400],
+      "id": "chat-trigger",
+      "name": "💬 Chat Trigger",
+      "webhookId": "selvadentro-dashboard-agent"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Eres un agente especializado del Dashboard inmobiliario \"Selvadentro Tulum\".\n\n## 🔧 HERRAMIENTAS DISPONIBLES\n\nTienes acceso a **269 herramientas de GoHighLevel MCP** organizadas en estas categorías:\n\n### 👥 Gestión de Contactos (31 herramientas)\n- `create_contact`, `search_contacts`, `get_contact`, `update_contact`, `delete_contact`\n- `add_contact_tags`, `remove_contact_tags` - Organizar con etiquetas\n- `get_contact_tasks`, `create_contact_task`, `update_contact_task`, `delete_contact_task`\n- `get_contact_notes`, `create_contact_note`, `update_contact_note`, `delete_contact_note`\n- `upsert_contact` - Crear/actualizar inteligente\n- `get_duplicate_contact` - Detección de duplicados\n- `bulk_update_contact_tags` - Operaciones masivas de etiquetas\n- `add_contact_to_workflow`, `remove_contact_from_workflow` - Automatización de workflows\n\n### 💬 Mensajería y Conversaciones (20 herramientas)\n- `send_sms`, `send_email` - Enviar mensajes\n- `search_conversations`, `get_conversation`, `create_conversation`\n- `get_message`, `get_email_message`, `upload_message_attachments`\n- `update_message_status`, `cancel_scheduled_message`\n- `get_message_recording`, `get_message_transcription`, `download_transcription`\n\n### 💰 Gestión de Oportunidades (10 herramientas)\n- `search_opportunities` - Filtrado avanzado por pipeline, etapa, contacto\n- `get_pipelines` - Gestión de pipelines de ventas\n- `create_opportunity`, `update_opportunity`, `delete_opportunity`\n- `update_opportunity_status` - Actualizaciones rápidas de ganado/perdido\n- `upsert_opportunity` - Gestión inteligente de pipeline\n\n### 🗓️ Calendario y Citas (14 herramientas)\n- `get_calendar_groups`, `get_calendars`, `create_calendar`\n- `get_calendar_events`, `get_free_slots` - Verificación de disponibilidad\n- `create_appointment`, `get_appointment`, `update_appointment`, `delete_appointment`\n- `create_block_slot`, `update_block_slot` - Bloqueo de tiempo\n\n### 🧾 Facturas y Pagos (39 herramientas)\n- `create_invoice`, `list_invoices`, `get_invoice`, `update_invoice`, `send_invoice`\n- `create_estimate`, `list_estimates`, `send_estimate`\n- `list_orders`, `get_order_by_id`, `list_transactions`\n- `list_subscriptions`, `list_coupons`, `create_coupon`\n\n### 📱 Social Media (17 herramientas)\n- `search_social_posts`, `create_social_post`, `get_social_post`\n- `get_social_accounts`, `start_social_oauth`\n\n### 🏢 Gestión de Ubicación (24 herramientas)\n- `search_locations`, `get_location`, `create_location`\n- `get_location_tags`, `get_location_custom_fields`\n\n---\n\n## 🎯 TU OBJETIVO PRINCIPAL\n\nCuando te pregunten por datos del dashboard, SIEMPRE debes obtener información de TODAS las fuentes necesarias para dar una respuesta completa.\n\n---\n\n## 📊 SECCIONES DEL DASHBOARD Y QUÉ DATOS NECESITAN\n\n### 1. HOME / DASHBOARD PRINCIPAL\n\n**KPIs Requeridos:**\n| KPI | Herramienta GHL |\n|-----|--------|\n| Leads Nuevos | `search_contacts` (filtrar por dateAdded) |\n| Oportunidades Activas | `search_opportunities` (status=open) |\n| Ventas Cerradas | `search_opportunities` (status=won) |\n| Valor Total Pipeline | `search_opportunities` (suma monetaryValue) |\n| Citas Programadas | `get_calendar_events` |\n\n**Meta Mensual:** 270 puntos, 6 ventas\n\n### 2. LEADS (Kanban de 6 columnas)\n\n**Columnas del Pipeline:**\n1. **Nuevo** - Leads recién ingresados\n2. **Calificado** - Leads con presupuesto validado\n3. **Propuesta** - Enviada propuesta de propiedad\n4. **Visita** - Cita agendada o realizada\n5. **Negociación** - En proceso de cierre\n6. **Cerrado** - Venta completada\n\n### 3. BROKERS (Grid de agentes)\n\n**Datos por Broker:** Nombre, Email, Leads asignados, Oportunidades activas, Ventas cerradas, Valor total vendido\n\n---\n\n## 📋 SISTEMA DE PUNTOS\n\n| Actividad | Puntos |\n|-----------|--------|\n| SMS enviado | 1 |\n| Email enviado | 2 |\n| Llamada realizada | 3 |\n| Cita agendada | 3 |\n| Cita confirmada | 5 |\n| Visita física | 10 |\n| Venta cerrada | 20 |\n\n---\n\n## 🎯 EJEMPLOS DE USO\n\n### Comunicación con Clientes:\n\"Busca contactos etiquetados como 'VIP' que no han sido contactados en 30 días, y envíales un SMS personalizado\"\n\n### Gestión de Pipeline:\n\"Crea una oportunidad para el contacto Juan Pérez por $500,000 MXN, agrégala al pipeline 'Ventas Tulum' y agenda una cita de seguimiento\"\n\n### Reportes:\n\"Dame todas las oportunidades ganadas este mes con su valor y el broker asignado\"\n\n### Calendario:\n\"Muéstrame los slots disponibles para la próxima semana en el calendario de visitas\"\n\n---\n\n## 🇲🇽 CONTEXTO DEL NEGOCIO\n\n- **Proyecto:** Selvadentro - Desarrollo inmobiliario premium en Tulum, Riviera Maya\n- **Moneda:** MXN (pesos mexicanos)\n- **Equipo:** 5-6 brokers activos\n- **Meta mensual:** 270 puntos, 6 ventas\n- **Ticket promedio:** ~$400,000 MXN\n\n---\n\n## ⚠️ REGLAS IMPORTANTES\n\n1. **SIEMPRE responde en español**\n2. **USA las herramientas GHL MCP** para obtener datos reales\n3. **USA tablas** para datos tabulares\n4. **SÉ CONCISO** pero informativo\n5. **NO INVENTES DATOS** - si no tienes info, usa las herramientas para obtenerla\n6. **USA la herramienta BUSCAR** para documentación y procedimientos internos\n\n---\n\n**Entrada del usuario:**\n{{ $json.chatInput }}\n",
+        "options": {}
+      },
+      "id": "ai-agent",
+      "name": "🤖 Dashboard Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [700, 400],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "openai-model",
+      "name": "🧠 OpenAI GPT-4o",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [600, 620],
+      "credentials": {
+        "openAiApi": {
+          "id": "TN7GP5y1xmtLyA24",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.sessionId || 'default' }}"
+      },
+      "id": "memory",
+      "name": "🧠 Window Buffer Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [720, 620]
+    },
+    {
+      "parameters": {
+        "endpointUrl": "https://selva-ghl-mcp-v2.cpvnsn.easypanel.host/sse",
+        "options": {}
+      },
+      "id": "mcp-ghl",
+      "name": "🔌 GHL MCP Server",
+      "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+      "typeVersion": 1.2,
+      "position": [840, 620]
+    },
+    {
+      "parameters": {
+        "name": "BUSCAR",
+        "description": "Usa esta herramienta para buscar información en la base de conocimientos de Selvadentro. Contiene documentación sobre procedimientos, herramientas GHL, políticas, y guías internas del negocio inmobiliario.",
+        "topK": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolVectorStore",
+      "typeVersion": 1,
+      "position": [960, 620],
+      "id": "tool-buscar",
+      "name": "🔍 BUSCAR"
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [960, 840],
+      "id": "openai-buscar",
+      "name": "🧠 OpenAI (BUSCAR)",
+      "credentials": {
+        "openAiApi": {
+          "id": "TN7GP5y1xmtLyA24",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableName": {
+          "__rl": true,
+          "value": "documents",
+          "mode": "list",
+          "cachedResultName": "documents"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1,
+      "position": [1100, 840],
+      "id": "supabase-vector",
+      "name": "💾 Supabase Vector Store",
+      "credentials": {
+        "supabaseApi": {
+          "id": "zKnZ5kOYsuXUakH6",
+          "name": "SelvaSupa"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.1,
+      "position": [1240, 840],
+      "id": "embeddings",
+      "name": "📐 Embeddings OpenAI",
+      "credentials": {
+        "openAiApi": {
+          "id": "TN7GP5y1xmtLyA24",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## 🔌 GHL MCP Server - 269 Herramientas\n\n**Endpoint:** https://selva-ghl-mcp-v2.cpvnsn.easypanel.host/sse\n\n**Categorías:**\n- 👥 Contactos (31)\n- 💬 Mensajería (20)\n- 💰 Oportunidades (10)\n- 🗓️ Calendario (14)\n- 🧾 Facturas (39)\n- 📱 Social Media (17)\n- 🏢 Ubicaciones (24)\n- 🛒 E-commerce (28)\n- Y más..."
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [840, 200],
+      "typeVersion": 1,
+      "id": "sticky-mcp",
+      "name": "📝 MCP Info"
+    },
+    {
+      "parameters": {
+        "content": "## 🤖 Dashboard Agent - Selvadentro Tulum\n\n**Flujo:**\n1. Chat Trigger recibe mensaje\n2. AI Agent procesa con GPT-4o\n3. Consulta GHL MCP para datos en vivo\n4. Consulta BUSCAR para documentación\n5. Responde con información combinada\n\n**Memoria:** Window Buffer por sessionId"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [400, 200],
+      "typeVersion": 1,
+      "id": "sticky-info",
+      "name": "📝 Workflow Info"
+    }
+  ],
+  "connections": {
+    "💬 Chat Trigger": {
+      "main": [
+        [
+          {
+            "node": "🤖 Dashboard Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧠 OpenAI GPT-4o": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "🤖 Dashboard Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧠 Window Buffer Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "🤖 Dashboard Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔌 GHL MCP Server": {
+      "ai_tool": [
+        [
+          {
+            "node": "🤖 Dashboard Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔍 BUSCAR": {
+      "ai_tool": [
+        [
+          {
+            "node": "🤖 Dashboard Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧠 OpenAI (BUSCAR)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "🔍 BUSCAR",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "💾 Supabase Vector Store": {
+      "ai_vectorStore": [
+        [
+          {
+            "node": "🔍 BUSCAR",
+            "type": "ai_vectorStore",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📐 Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "💾 Supabase Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "Selvadentro",
+      "createdAt": "2024-11-28T00:00:00.000Z",
+      "updatedAt": "2024-11-28T00:00:00.000Z"
+    },
+    {
+      "name": "GHL MCP",
+      "createdAt": "2024-11-28T00:00:00.000Z",
+      "updatedAt": "2024-11-28T00:00:00.000Z"
+    },
+    {
+      "name": "Dashboard",
+      "createdAt": "2024-11-28T00:00:00.000Z",
+      "updatedAt": "2024-11-28T00:00:00.000Z"
+    },
+    {
+      "name": "Supabase RAG",
+      "createdAt": "2024-11-28T00:00:00.000Z",
+      "updatedAt": "2024-11-28T00:00:00.000Z"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2024-11-28T00:00:00.000Z",
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ccb2a4ea95060958af1b13d34ae8970087294fc7e7fcb38d3c72c52984ad5e95"
+  }
+}
