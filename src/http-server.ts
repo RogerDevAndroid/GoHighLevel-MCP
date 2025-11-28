@@ -3,6 +3,7 @@
  * HTTP version for ChatGPT web integration
  */
 
+import crypto from 'crypto';
 import express from 'express';
 import cors from 'cors';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -63,6 +64,8 @@ class GHLMCPHttpServer {
   private storeTools: StoreTools;
   private productsTools: ProductsTools;
   private port: number;
+  // Store active SSE transports by sessionId
+  private sseTransports: Map<string, SSEServerTransport> = new Map();
 
   constructor() {
     this.port = parseInt(process.env.PORT || process.env.MCP_SERVER_PORT || '8000');
@@ -350,41 +353,69 @@ class GHLMCPHttpServer {
       }
     });
 
-    // SSE endpoint for ChatGPT MCP connection
-    const handleSSE = async (req: express.Request, res: express.Response) => {
-      const sessionId = req.query.sessionId || 'unknown';
-      console.log(`[GHL MCP HTTP] New SSE connection from: ${req.ip}, sessionId: ${sessionId}, method: ${req.method}`);
-      
+    // SSE endpoint for MCP connection (GET establishes SSE stream)
+    this.app.get('/sse', async (req: express.Request, res: express.Response) => {
+      const sessionId = req.query.sessionId as string || crypto.randomUUID();
+      console.log(`[GHL MCP HTTP] New SSE connection from: ${req.ip}, sessionId: ${sessionId}`);
+
       try {
-        // Create SSE transport (this will set the headers)
-        const transport = new SSEServerTransport('/sse', res);
-        
+        // Create SSE transport with the /messages endpoint for this session
+        const transport = new SSEServerTransport(`/messages?sessionId=${sessionId}`, res);
+
+        // Store transport for later message handling
+        this.sseTransports.set(sessionId, transport);
+
         // Connect MCP server to transport
         await this.server.connect(transport);
-        
+
         console.log(`[GHL MCP HTTP] SSE connection established for session: ${sessionId}`);
-        
+
         // Handle client disconnect
         req.on('close', () => {
           console.log(`[GHL MCP HTTP] SSE connection closed for session: ${sessionId}`);
+          this.sseTransports.delete(sessionId);
         });
-        
+
       } catch (error) {
         console.error(`[GHL MCP HTTP] SSE connection error for session ${sessionId}:`, error);
-        
-        // Only send error response if headers haven't been sent yet
+        this.sseTransports.delete(sessionId);
+
         if (!res.headersSent) {
           res.status(500).json({ error: 'Failed to establish SSE connection' });
         } else {
-          // If headers were already sent, close the connection
           res.end();
         }
       }
-    };
+    });
 
-    // Handle both GET and POST for SSE (MCP protocol requirements)
-    this.app.get('/sse', handleSSE);
-    this.app.post('/sse', handleSSE);
+    // Messages endpoint for MCP protocol (POST sends messages to the server)
+    this.app.post('/messages', async (req: express.Request, res: express.Response) => {
+      const sessionId = req.query.sessionId as string;
+      console.log(`[GHL MCP HTTP] Received message for session: ${sessionId}`);
+
+      if (!sessionId) {
+        res.status(400).json({ error: 'Missing sessionId parameter' });
+        return;
+      }
+
+      const transport = this.sseTransports.get(sessionId);
+
+      if (!transport) {
+        console.error(`[GHL MCP HTTP] No active transport for session: ${sessionId}`);
+        res.status(404).json({ error: 'Session not found. Please reconnect to /sse endpoint.' });
+        return;
+      }
+
+      try {
+        // Handle the incoming message through the transport
+        await transport.handlePostMessage(req, res);
+      } catch (error) {
+        console.error(`[GHL MCP HTTP] Error handling message for session ${sessionId}:`, error);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Failed to process message' });
+        }
+      }
+    });
 
     // Root endpoint with server info
     this.app.get('/', (req, res) => {
@@ -396,7 +427,8 @@ class GHLMCPHttpServer {
           health: '/health',
           capabilities: '/capabilities',
           tools: '/tools',
-          sse: '/sse'
+          sse: '/sse',
+          messages: '/messages?sessionId={sessionId}'
         },
         tools: this.getToolsCount(),
         documentation: 'https://github.com/your-repo/ghl-mcp-server'
